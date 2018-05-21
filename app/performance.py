@@ -4,11 +4,12 @@ import sys
 import pandas as pd
 
 client = pymongo.MongoClient()
-db = client['bitmicro']
-symbol = sys.argv[1]
-frequency = int(sys.argv[2])
-predictions = db[symbol+'_predictions']
-performance = db[symbol+'_performance']
+exchange = sys.argv[1]
+db = client['bitpredict_'+exchange]
+asset = sys.argv[2]
+frequency = int(sys.argv[3])
+predictions = db[asset+'_predictions']
+performance = db[asset+'_performance']
 
 print 'Running...'
 last_timestamp = time.time() - frequency

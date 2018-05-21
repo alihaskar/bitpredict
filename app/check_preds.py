@@ -5,11 +5,13 @@ from math import log
 import sys
 
 client = pymongo.MongoClient()
-db = client['bitmicro']
-predictions = db['btc_predictions']
+exchange = sys.argv[1]
+asset = sys.argv[2]
+limit = int(sys.argv[2])
+db = client['bitpredict_'+exchange]
+predictions = db[asset+'_predictions']
 
-if len(sys.argv) > 1:
-    limit = int(sys.argv[1])
+if limit:
     cursor = predictions.find().limit(limit).sort('_id', pymongo.DESCENDING)
 else:
     cursor = predictions.find().sort('_id', pymongo.DESCENDING)

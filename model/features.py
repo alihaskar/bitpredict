@@ -7,14 +7,12 @@ from scipy.stats import linregress
 import pickle
 
 client = pymongo.MongoClient()
-db = client['bitmicro']
 
-
-def get_book_df(symbol, limit, convert_timestamps=False):
+def get_book_df(exchange, asset, limit, convert_timestamps=False):
     '''
     Returns a DataFrame of book data
     '''
-    books_db = db[symbol+'_books']
+    books_db = client['bitpredict_'+exchange][asset+'_books']
     cursor = books_db.find().sort('_id', -1).limit(limit)
     books = pd.DataFrame(list(cursor))
     books = books.set_index('_id')
@@ -84,11 +82,11 @@ def get_power_adjusted_price(books, n=10, power=2):
     return (adjusted/books.mid).apply(log).fillna(0)
 
 
-def get_trade_df(symbol, min_ts, max_ts, convert_timestamps=False):
+def get_trade_df(exchange, asset, min_ts, max_ts, convert_timestamps=False):
     '''
     Returns a DataFrame of trades for symbol in time range
     '''
-    trades_db = db[symbol+'_trades']
+    trades_db = client['bitpredict_'+exchange][asset+'_trades']
     query = {'timestamp': {'$gt': min_ts, '$lt': max_ts}}
     cursor = trades_db.find(query).sort('_id', pymongo.ASCENDING)
     trades = pd.DataFrame(list(cursor))
@@ -184,7 +182,7 @@ def check_times(books):
     return time_diff
 
 
-def make_features(symbol, sample, mid_offsets,
+def make_features(exchange, asset, sample, mid_offsets,
                   trades_offsets, powers, live=False):
     '''
     Returns a DataFrame with targets and features
@@ -193,7 +191,7 @@ def make_features(symbol, sample, mid_offsets,
     stage = time()
 
     # Book related features:
-    books = get_book_df(symbol, sample)
+    books = get_book_df(exchange, asset, sample)
     if not live:
         print 'get book data run time:', (time()-stage)/60, 'minutes'
         stage = time()
@@ -220,7 +218,7 @@ def make_features(symbol, sample, mid_offsets,
     max_ts = books.index.max()
     if live:
         max_ts += 10
-    trades = get_trade_df(symbol, min_ts, max_ts)
+    trades = get_trade_df(exchange, asset, min_ts, max_ts)
     for n in trades_offsets:
         if trades.empty:
             books['indexes'] = 0
@@ -242,18 +240,23 @@ def make_features(symbol, sample, mid_offsets,
     return books.drop('indexes', axis=1)
 
 
-def make_data(symbol, sample):
+def make_data(exchange, asset, sample):
     '''
     Convenience function for calling make_features
     '''
-    data = make_features(symbol,
+    data = make_features(exchange, asset,
                          sample=sample,
                          mid_offsets=[30],
                          trades_offsets=[30, 60, 120, 180],
                          powers=[2, 4, 8])
     return data
 
-if __name__ == '__main__' and len(sys.argv) == 4:
-    data = make_data(sys.argv[1], int(sys.argv[2]))
-    with open(sys.argv[3], 'w+') as f:
+if __name__ == '__main__' and len(sys.argv) == 5:
+    exchange = sys.argv[1]
+    asset = sys.argv[2]
+    limit = int(sys.argv[3])
+    out = sys.argv[4]
+
+    data = make_data(exchange, asset, limit)
+    with open(out, 'w+') as f:
         pickle.dump(data, f)

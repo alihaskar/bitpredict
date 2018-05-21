@@ -1,4 +1,8 @@
-from bitpredict.model import features as f
+import sys
+import os
+sys.path.append(os.path.basename(os.path.basename(__file__)))
+
+from model import features as f
 import pymongo
 import time
 import sys
@@ -7,11 +11,12 @@ import numpy as np
 from math import log
 
 client = pymongo.MongoClient()
-db = client['bitmicro']
-symbol = sys.argv[1]
-duration = int(sys.argv[2])
-threshold = float(sys.argv[3])
-predictions = db[symbol+'_predictions']
+exchange = sys.argv[1]
+db = client['bitpredict_'+exchange]
+asset = sys.argv[2]
+duration = int(sys.argv[3])
+threshold = float(sys.argv[4])
+predictions = db[asset+'_predictions']
 
 with open('cols.pkl', 'r') as file1:
     cols = pickle.load(file1)
@@ -27,7 +32,8 @@ previous_price = None
 while True:
     start = time.time()
     try:
-        data = f.make_features(symbol,
+        data = f.make_features(exchange,
+                               asset,
                                1,
                                [duration],
                                [30, 60, 120, 180],
