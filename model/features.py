@@ -109,6 +109,7 @@ def get_trades_indexes(books, trades, offset, live=False):
             i_n = -1
         else:
             i_n = trades.timestamp.searchsorted([ts-1], side='right')[0]
+        print(ts, offset, i_0, i_n)
         return (i_0, i_n)
     return books.index.map(indexes)
 
@@ -219,6 +220,7 @@ def make_features(exchange, asset, sample, mid_offsets,
     if live:
         max_ts += 10
     trades = get_trade_df(exchange, asset, min_ts, max_ts)
+    print(trades)
     for n in trades_offsets:
         if trades.empty:
             books['indexes'] = 0
