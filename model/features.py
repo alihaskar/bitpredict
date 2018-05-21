@@ -89,13 +89,9 @@ def get_trade_df(exchange, asset, min_ts, max_ts, convert_timestamps=False):
     trades_db = client['bitpredict_'+exchange][asset+'_trades']
     query = {'timestamp': {'$gt': min_ts, '$lt': max_ts}}
     cursor = trades_db.find(query).sort('_id', pymongo.ASCENDING)
-    def rename_trade_id(trade):
-        trade['tid'] = trade.pop('_id')
-        return trade
-    trades_list = map(rename_trade_id, list(cursor))
-    trades = pd.DataFrame(trades_list)
+    trades = pd.DataFrame(list(cursor))
     if not trades.empty:
-        trades = trades.set_index('tid')
+        trades = trades.set_index('_id')
         if convert_timestamps:
             trades.index = pd.to_datetime(trades.index, unit='s')
     return trades
