@@ -89,61 +89,64 @@ def get_trade_df(exchange, asset, min_ts, max_ts, convert_timestamps=False):
     trades_db = client['bitpredict_'+exchange][asset+'_trades']
     query = {'timestamp': {'$gt': min_ts, '$lt': max_ts}}
     cursor = trades_db.find(query).sort('_id', pymongo.ASCENDING)
-    trades = pd.DataFrame(list(cursor))
+    def rename_trade_id(trade):
+        trade['tid'] = trade.pop('_id')
+        return trade
+    trades_list = map(rename_trade_id, list(cursor))
+    trades = pd.DataFrame(trades_list)
     if not trades.empty:
-        trades = trades.set_index('_id')
+        trades = trades.set_index('tid')
         if convert_timestamps:
             trades.index = pd.to_datetime(trades.index, unit='s')
     return trades
 
 
-def get_trades_indexes(books, trades, offset, live=False):
+def add_trades(books, trades, offset, live=False):
     '''
-    Returns indexes of trades in offset range for each data point in DataFrame
-    of book data
+    Updates book rows with trades in offset range (past) from snapshot timestamp
     '''
-    def indexes(ts):
-        ts = int(ts)
+    def add_book_trades(book):
+        ts = int(book.name)
         i_0 = trades.timestamp.searchsorted([ts-offset], side='left')[0]
         if live:
             i_n = -1
         else:
             i_n = trades.timestamp.searchsorted([ts-1], side='right')[0]
-        print(ts, offset, i_0, i_n)
-        return (i_0, i_n)
-    return books.index.map(indexes)
+        book.at['trades'] = trades.iloc[i_0:i_n]
+        return book
+    return books.apply(add_book_trades, axis=1)
 
 
-def get_trades_count(books, trades):
+def get_trades_count(books):
     '''
     Returns a count of trades for each data point in DataFrame of book data
     '''
     def count(x):
-        return len(trades.iloc[x.indexes[0]:x.indexes[1]])
+        return len(x.trades)
     return books.apply(count, axis=1)
 
 
-def get_trades_average(books, trades):
+def get_trades_average(books):
     '''
     Returns the percent change of a volume-weighted average of trades for each
     data point in DataFrame of book data
     '''
 
     def mean_trades(x):
-        trades_n = trades.iloc[x.indexes[0]:x.indexes[1]]
+        trades_n = x.trades
         if not trades_n.empty:
             return (trades_n.price*trades_n.amount).sum()/trades_n.amount.sum()
     return (books.mid/books.apply(mean_trades, axis=1)).apply(log).fillna(0)
 
 
-def get_aggressor(books, trades):
+def get_aggressor(books):
     '''
     Returns a measure of whether trade aggressors were buyers or sellers for
     each data point in DataFrame of book data
     '''
 
     def aggressor(x):
-        trades_n = trades.iloc[x.indexes[0]:x.indexes[1]]
+        trades_n = x.trades
         if trades_n.empty:
             return 0
         buys = trades_n['type'] == 'buy'
@@ -153,14 +156,14 @@ def get_aggressor(books, trades):
     return books.apply(aggressor, axis=1)
 
 
-def get_trend(books, trades):
+def get_trend(books):
     '''
     Returns the linear trend in previous trades for each data point in DataFrame
     of book data
     '''
 
     def trend(x):
-        trades_n = trades.iloc[x.indexes[0]:x.indexes[1]]
+        trades_n = x.trades
         if len(trades_n) < 3:
             return 0
         else:
@@ -220,26 +223,24 @@ def make_features(exchange, asset, sample, mid_offsets,
     if live:
         max_ts += 10
     trades = get_trade_df(exchange, asset, min_ts, max_ts)
-    print(trades)
     for n in trades_offsets:
         if trades.empty:
-            books['indexes'] = 0
             books['t{}_count'.format(n)] = 0
             books['t{}_av'.format(n)] = 0
             books['agg{}'.format(n)] = 0
             books['trend{}'.format(n)] = 0
         else:
-            books['indexes'] = get_trades_indexes(books, trades, n, live)
-            books['t{}_count'.format(n)] = get_trades_count(books, trades)
-            books['t{}_av'.format(n)] = get_trades_average(books, trades)
-            books['agg{}'.format(n)] = get_aggressor(books, trades)
-            books['trend{}'.format(n)] = get_trend(books, trades)
+            books = add_trades(books, trades, n, live)
+            books['t{}_count'.format(n)] = get_trades_count(books)
+            books['t{}_av'.format(n)] = get_trades_average(books)
+            books['agg{}'.format(n)] = get_aggressor(books)
+            books['trend{}'.format(n)] = get_trend(books)
     if not live:
         print 'trade features run time:', (time()-stage)/60, 'minutes'
         stage = time()
         print 'make_features run time:', (time()-start)/60, 'minutes'
 
-    return books.drop('indexes', axis=1)
+    return books
 
 
 def make_data(exchange, asset, sample):
